@@ -1,0 +1,44 @@
+        
+        section {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .tarjeta {
+            width: 240px;
+            text-align: center;
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px 0 #d49c21;
+            background-color: #154c70;
+        }
+
+        .imagen {
+            max-width: 100%;
+            height: auto;
+            border-radius: 50%;
+        }
+
+        .nombre {
+            background-color: #d49c21;
+            border-radius: 20px;
+            font-size: 1.5rem;
+            margin-top: 10px;
+
+        }
+
+        .numero {
+            font-size: 1.2rem;
+            color: #d6d6d6;
+            margin-top: 10px;
+        }
+
+        .correo {
+            font-size: 0.8rem;
+            color: #b4b4b4;
+            margin-top: 10px;
+        }

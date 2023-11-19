@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Amifood</title>
+    <link rel="stylesheet" href="style/style.css">
+    <script src="script.js"></script>
+</head>
+<body class="tamañoajustale">
+
+    <div class="menu">
+        <center>
+            <img src="img/amifood.png" height="250" width="370" class="logo">  
+        </center>
+        <style>
+            logo {
+                object-fit: cover;
+            }
+        </style>
+    </div>
+
+    <center>
+    <nav class="navbar" class="ppp">
+        <ul>
+            <li><a href="index.html" class="barra">Inicio</a></li>
+            <li><a href="consulp.html" class="barra">consulta precios</a></li>
+            <li><a href="comentarios.html" class="barra">sugerencias</a></li>
+            <li><a href="contactos.html" class="barra">Contacto</a></li>
+            <li><a href="perfilpersonal.html" class="barra">perfil mio</a></li>
+            <li><a href="tic.html" class="barra">tic</a></li>
+            <li><a href="tsg.html" class="barra">tgs</a></li>
+        </ul>
+    </nav>
+
+    <h1>Busqueda de Precios</h1>
+
+    <form id="search-form">
+        <h2>Precio a buscar: <input type="text" id="price" name="price" required></h2>
+        <input type="submit" value="Buscar">
+    </form>
+    <div id="results"></div>
+    </center>
+
+</body>
+</html>
