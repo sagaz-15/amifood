@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Control - AmiFood</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <a href="index.html" class="logo-link">
+        <img src="img/amifood.png" alt="AmiFood" class="logo-img">
+        <span class="logo-text">Ami<span>Food</span>'S</span>
+      </a>
+      <button class="mobile-toggle" id="menu-toggle" aria-label="Menú">☰</button>
+      <nav class="main-nav" id="main-nav">
+        <a href="index.html">Inicio</a>
+        <a href="consulp.html">Consultar Precios</a>
+        <a href="comentarios.html">Sugerencias</a>
+        <a href="contactos.html">Contacto</a>
+        <a href="login.html" class="store-link">Tienda</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <div class="dashboard">
+      <div class="dashboard-header">
+        <h1>Panel de Control</h1>
+        <div class="store-info">
+          <span class="store-name" id="store-name-display"></span>
+          <button class="btn btn-danger btn-sm" id="btn-logout">Cerrar Sesión</button>
+        </div>
+      </div>
+
+      <div id="alert-success" class="alert alert-success"></div>
+      <div id="alert-error" class="alert alert-error"></div>
+
+      <div class="add-product-card">
+        <h2>➕ Agregar nuevo producto</h2>
+        <form id="add-product-form" class="add-product-form">
+          <div class="form-group">
+            <label for="product-name">Nombre</label>
+            <input type="text" id="product-name" placeholder="Ej: Perro caliente" required>
+          </div>
+          <div class="form-group">
+            <label for="product-price">Precio ($)</label>
+            <input type="number" id="product-price" min="0" step="100" placeholder="Ej: 5000" required>
+          </div>
+          <div class="form-group" style="flex: 1.5;">
+            <label for="product-description">Descripción (opcional)</label>
+            <input type="text" id="product-description" placeholder="Ej: Perro caliente con salsa de la casa">
+          </div>
+          <button type="submit" class="btn btn-success" id="add-btn">Agregar</button>
+        </form>
+      </div>
+
+      <h2 style="font-family: var(--font-display); font-size: 1.3rem; margin-bottom: 16px;">Mis Productos</h2>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Precio</th>
+              <th>Disponible</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="products-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = 'login.html';
+    }
+
+    document.getElementById('menu-toggle').addEventListener('click', function() {
+      document.getElementById('main-nav').classList.toggle('open');
+    });
+
+    document.getElementById('store-name-display').textContent = localStorage.getItem('storeName') || 'Tienda';
+
+    function showAlert(type, msg) {
+      const el = document.getElementById('alert-' + type);
+      el.textContent = msg;
+      el.style.display = 'flex';
+      setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    function api(url, opts = {}) {
+      const headers = { 'Authorization': 'Bearer ' + token, ...opts.headers };
+      if (opts.body && !(opts.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+      }
+      return fetch(url, { ...opts, headers });
+    }
+
+    function loadProducts() {
+      const tbody = document.getElementById('products-tbody');
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-muted);">Cargando productos...</td></tr>';
+
+      api('/api/products').then(r => {
+        if (r.status === 401) { localStorage.clear(); window.location.href = 'login.html'; }
+        return r.json();
+      }).then(products => {
+        if (!products.length) {
+          tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><div class="empty-icon">📦</div><h3>No tienes productos</h3><p style="color:var(--text-muted);">Agrega tu primer producto usando el formulario de arriba.</p></div></td></tr>';
+          return;
+        }
+        tbody.innerHTML = products.map(p => {
+          const avail = p.is_available;
+          return '<tr>' +
+            '<td class="product-name-cell" data-id="' + p.id + '">' + esc(p.name) + '</td>' +
+            '<td class="product-price-cell" data-id="' + p.id + '">$' + Number(p.price).toLocaleString('es-CO') + '</td>' +
+            '<td>' +
+              '<span class="badge ' + (avail ? 'badge-available' : 'badge-unavailable') + '">' +
+                (avail ? '✓ Disponible' : '✗ No disponible') +
+              '</span>' +
+            '</td>' +
+            '<td class="actions-cell">' +
+              '<button class="btn btn-primary btn-sm" onclick="editProduct(' + p.id + ')">Editar</button>' +
+              '<button class="btn btn-sm ' + (avail ? 'btn-danger' : 'btn-success') + '" onclick="toggleAvail(' + p.id + ',' + (avail ? 0 : 1) + ')">' +
+                (avail ? 'Desactivar' : 'Activar') +
+              '</button>' +
+              '<button class="btn btn-danger btn-sm" onclick="deleteProduct(' + p.id + ')">Eliminar</button>' +
+            '</td></tr>';
+        }).join('');
+      }).catch(() => {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--danger);">Error al cargar productos</td></tr>';
+      });
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    window.editProduct = function(id) {
+      const row = document.querySelector('td[data-id="' + id + '"]').closest('tr');
+      const nameCell = row.querySelector('.product-name-cell');
+      const priceCell = row.querySelector('.product-price-cell');
+      const name = nameCell.textContent;
+      const price = Number(priceCell.textContent.replace(/[^0-9]/g, ''));
+
+      nameCell.innerHTML = '<input type="text" class="edit-input" id="edit-name-' + id + '" value="' + esc(name) + '">';
+      priceCell.innerHTML = '<input type="number" class="edit-input" id="edit-price-' + id + '" value="' + price + '" min="0" step="100">';
+
+      const actions = row.querySelector('.actions-cell');
+      actions.innerHTML =
+        '<button class="btn btn-success btn-sm" onclick="saveProduct(' + id + ')">Guardar</button>' +
+        '<button class="btn btn-outline btn-sm" onclick="loadProducts()">Cancelar</button>';
+    };
+
+    window.saveProduct = function(id) {
+      const name = document.getElementById('edit-name-' + id).value.trim();
+      const price = document.getElementById('edit-price-' + id).value;
+      if (!name || !price) { showAlert('error', 'Nombre y precio requeridos'); return; }
+
+      api('/api/products/' + id, {
+        method: 'PUT',
+        body: JSON.stringify({ name, price: parseFloat(price) })
+      }).then(r => r.json()).then(d => {
+        if (d.error) { showAlert('error', d.error); }
+        else { showAlert('success', 'Producto actualizado'); loadProducts(); }
+      }).catch(() => showAlert('error', 'Error al guardar'));
+    };
+
+    window.toggleAvail = function(id, status) {
+      const row = document.querySelector('td[data-id="' + id + '"]').closest('tr');
+      const name = row.querySelector('.product-name-cell').textContent;
+      const price = Number(row.querySelector('.product-price-cell').textContent.replace(/[^0-9]/g, ''));
+
+      api('/api/products/' + id, {
+        method: 'PUT',
+        body: JSON.stringify({ name, price, is_available: status === 1 })
+      }).then(r => r.json()).then(d => {
+        if (d.error) { showAlert('error', d.error); }
+        else { showAlert('success', 'Disponibilidad actualizada'); loadProducts(); }
+      }).catch(() => showAlert('error', 'Error al actualizar'));
+    };
+
+    window.deleteProduct = function(id) {
+      if (!confirm('¿Eliminar este producto permanentemente?')) return;
+      api('/api/products/' + id, { method: 'DELETE' })
+        .then(r => r.json()).then(d => {
+          if (d.error) { showAlert('error', d.error); }
+          else { showAlert('success', 'Producto eliminado'); loadProducts(); }
+        }).catch(() => showAlert('error', 'Error al eliminar'));
+    };
+
+    document.getElementById('add-product-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const name = document.getElementById('product-name').value.trim();
+      const price = document.getElementById('product-price').value;
+      const desc = document.getElementById('product-description').value.trim();
+      const btn = document.getElementById('add-btn');
+
+      if (!name || !price) { showAlert('error', 'Nombre y precio requeridos'); return; }
+
+      btn.disabled = true; btn.textContent = 'Agregando...';
+      api('/api/products', {
+        method: 'POST',
+        body: JSON.stringify({ name, price: parseFloat(price), description: desc || null })
+      }).then(r => r.json()).then(d => {
+        if (d.error) { showAlert('error', d.error); }
+        else {
+          showAlert('success', 'Producto agregado exitosamente');
+          document.getElementById('add-product-form').reset();
+          loadProducts();
+        }
+        btn.disabled = false; btn.textContent = 'Agregar';
+      }).catch(() => {
+        showAlert('error', 'Error al agregar');
+        btn.disabled = false; btn.textContent = 'Agregar';
+      });
+    });
+
+    document.getElementById('btn-logout').addEventListener('click', function() {
+      localStorage.clear();
+      window.location.href = 'login.html';
+    });
+
+    loadProducts();
+  </script>
+</body>
+</html>

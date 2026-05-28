@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const { poolConnect } = require('./db');
+const { poolConnect } = require('./config/database');
 const searchRoutes = require('./routes/search');
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(__dirname, '..', '..')));
+app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
 app.use('/api/products/search', searchRoutes);
 app.use('/api/auth', authRoutes);

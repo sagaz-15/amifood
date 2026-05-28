@@ -2,44 +2,14 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { sql, pool, poolConnect } = require('./db');
+const { sql, pool, poolConnect } = require('./config/database');
 
 const storesData = [
-  {
-    name: 'La Frutera',
-    email: 'lafrutera@amifood.com',
-    password: 'frutera123',
-    location: 'Bloque 5 al lado del bloque 3',
-    image_url: 'img/frutera.jpeg'
-  },
-  {
-    name: 'Deli U',
-    email: 'deliu@amifood.com',
-    password: 'deli123',
-    location: 'Bloque 1',
-    image_url: 'img/deli u.jpg'
-  },
-  {
-    name: 'Café los Frailes',
-    email: 'frailes@amifood.com',
-    password: 'frailes123',
-    location: 'Atras del bloque 1',
-    image_url: 'img/frailes.jpg'
-  },
-  {
-    name: 'Al Toque',
-    email: 'altoque@amifood.com',
-    password: 'altoque123',
-    location: 'Bloque 1 piso 5',
-    image_url: 'img/al toque.jpg'
-  },
-  {
-    name: 'Sandwich Special',
-    email: 'sandwich@amifood.com',
-    password: 'sandwich123',
-    location: 'Bloque 2 al lado de la biblioteca',
-    image_url: 'img/sandwichd.jpeg'
-  }
+  { name: 'La Frutera', email: 'lafrutera@amifood.com', password: 'frutera123', location: 'Bloque 5 al lado del bloque 3', image_url: 'img/frutera.jpeg' },
+  { name: 'Deli U', email: 'deliu@amifood.com', password: 'deli123', location: 'Bloque 1', image_url: 'img/deli u.jpg' },
+  { name: 'Café los Frailes', email: 'frailes@amifood.com', password: 'frailes123', location: 'Atras del bloque 1', image_url: 'img/frailes.jpg' },
+  { name: 'Al Toque', email: 'altoque@amifood.com', password: 'altoque123', location: 'Bloque 1 piso 5', image_url: 'img/al toque.jpg' },
+  { name: 'Sandwich Special', email: 'sandwich@amifood.com', password: 'sandwich123', location: 'Bloque 2 al lado de la biblioteca', image_url: 'img/sandwichd.jpeg' }
 ];
 
 const storeNameMap = {
@@ -89,9 +59,9 @@ async function seed() {
       console.log(`Tienda creada: ${s.name} (ID: ${result.recordset[0].id})`);
     }
 
-    const csvPath = path.join(__dirname, '..', '..', 'productos.csv');
+    const csvPath = path.join(__dirname, '..', '..', 'data', 'productos.csv');
     if (!fs.existsSync(csvPath)) {
-      console.log('No se encontró productos.csv. Seed de productos omitido.');
+      console.log('No se encontró data/productos.csv. Seed de productos omitido.');
       process.exit(0);
     }
 
@@ -112,7 +82,7 @@ async function seed() {
       const storeId = storeIdMap[normalizedStore];
 
       if (!storeId) {
-        console.log(`Store not found for: ${parts[2].trim()} (normalized: ${normalizedStore})`);
+        console.log(`Tienda no encontrada para: ${parts[2].trim()} (normalizado: ${normalizedStore})`);
         skipped++;
         continue;
       }
@@ -135,7 +105,7 @@ async function seed() {
 
     console.log(`\nSeed completado!`);
     console.log(`Productos insertados: ${inserted}`);
-    console.log(`Productos omitidos (ya existen o error): ${skipped}`);
+    console.log(`Productos omitidos: ${skipped}`);
 
     console.log('\n--- CREDENCIALES DE TIENDAS ---');
     for (const s of storesData) {

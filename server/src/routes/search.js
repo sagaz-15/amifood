@@ -1,5 +1,5 @@
 const express = require('express');
-const { sql, pool, poolConnect } = require('../db');
+const { sql, pool, poolConnect } = require('../config/database');
 
 const router = express.Router();
 
