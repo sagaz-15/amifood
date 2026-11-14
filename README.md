@@ -21,7 +21,7 @@ API REST del módulo de productos de **AmiFood**, la plataforma de consulta de l
 
 ```bash
 # 1. Clonar el repositorio
-git clone <URL_DEL_REPOSITORIO>
+git clone <https://github.com/sagaz-15/amifood.git>
 cd amifood/server
 
 # 2. Instalar dependencias

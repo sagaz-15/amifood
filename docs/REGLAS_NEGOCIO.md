@@ -164,7 +164,7 @@ Estas ya se desprendían de `amifood.md` / `amifood RF04.md`:
 | RF04.15 | Combinar filtros | RN-09 |
 | RF12/RF13/RF15 | El encargado gestiona productos, precios y disponibilidad de su local | RN-05 |
 
-## 4. Reglas generadas (no estaban en los .md)
+## 4. Reglas generadas 
 
 | Regla | Motivación |
 |---|---|
