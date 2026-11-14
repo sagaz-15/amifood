@@ -65,7 +65,7 @@
     document.addEventListener('DOMContentLoaded', function() {
       const token = localStorage.getItem('token');
       if (token) {
-        fetch('/api/health', { headers: { 'Authorization': 'Bearer ' + token } })
+        fetch('/api/v1/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
           .then(r => { if (r.ok) window.location.href = 'dashboard.html'; })
           .catch(() => {});
       }
@@ -81,7 +81,7 @@
         submitBtn.textContent = 'Ingresando...';
         errorDiv.style.display = 'none';
 
-        fetch('/api/auth/login', {
+        fetch('/api/v1/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
@@ -90,11 +90,12 @@
         .then(data => {
           if (data.token) {
             localStorage.setItem('token', data.token);
-            localStorage.setItem('storeName', data.store.name);
-            localStorage.setItem('storeId', data.store.id);
+            localStorage.setItem('storeName', (data.store && data.store.name) || data.account.name);
+            localStorage.setItem('storeId', data.account.storeId || '');
+            localStorage.setItem('accountRole', data.account.role);
             window.location.href = 'dashboard.html';
           } else {
-            errorDiv.textContent = data.error || 'Error al iniciar sesión';
+            errorDiv.textContent = (data.error && data.error.message) || 'Error al iniciar sesion';
             errorDiv.style.display = 'block';
             submitBtn.disabled = false;
             submitBtn.textContent = 'Ingresar';

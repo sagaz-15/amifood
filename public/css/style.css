@@ -412,6 +412,19 @@ img {
   gap: 4px;
 }
 
+.result-card .product-description {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.result-card .badge {
+  font-size: 0.62rem;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 /* ========== FORMS (Login + Comments) ========== */
 .form-page {
   max-width: 480px;

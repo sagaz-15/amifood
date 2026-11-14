@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480" role="img" aria-label="Imagen no disponible">
+  <rect width="640" height="480" fill="#f4efe6"/>
+  <circle cx="320" cy="210" r="90" fill="#e8dcc8"/>
+  <path d="M250 250c20-45 50-70 70-70s50 25 70 70" fill="none" stroke="#b9a58a" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="320" cy="150" r="26" fill="#b9a58a"/>
+  <text x="320" y="345" font-family="Arial, sans-serif" font-size="28" fill="#8c7a63" text-anchor="middle">Imagen no disponible</text>
+  <text x="320" y="382" font-family="Arial, sans-serif" font-size="18" fill="#a8967c" text-anchor="middle">AmiFood</text>
+</svg>

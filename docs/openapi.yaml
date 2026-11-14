@@ -1,0 +1,1190 @@
+openapi: 3.0.3
+info:
+  title: AmiFood API - Modulo de Consulta de Productos (RF04)
+  description: |
+    API REST del modulo de productos de AmiFood, construida con arquitectura
+    Hexagonal (puertos y adaptadores). Permite consultar el catalogo con filtros
+    combinados, administrar productos (CRUD) y aplicar las reglas de negocio de
+    stock, disponibilidad y precio.
+
+    **Seguridad:** los endpoints de escritura y las consultas privadas requieren
+    un JWT obtenido en `POST /auth/login` (boton *Authorize* en Swagger UI).
+
+    **Tiempo real:** `GET /products/events` expone Server-Sent Events para
+    reflejar cambios de precio/disponibilidad sin recargar (RF04.13).
+
+    **Codigos de error:** el cuerpo siempre tiene la forma
+    `{ "error": { "code": "...", "message": "...", "details": [...] } }`.
+  version: 2.0.0
+  contact:
+    name: Equipo AmiFood
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Servidor local de desarrollo
+tags:
+  - name: Auth
+    description: Autenticacion de encargados y administradores
+  - name: Products
+    description: Catalogo y administracion de productos
+  - name: Events
+    description: Actualizacion en tiempo real (Server-Sent Events)
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesion y obtener un JWT
+      description: Valida correo y contrasena con bcrypt y emite un token JWT (HS256) con rol y local.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              encargado:
+                summary: Encargado de local
+                value:
+                  email: lafrutera@amifood.com
+                  password: AmiFood123*
+              administrador:
+                summary: Administrador global
+                value:
+                  email: admin@amifood.com
+                  password: Admin123*
+      responses:
+        '200':
+          description: Credenciales validas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ejemplo.firma
+                tokenType: Bearer
+                expiresIn: 24h
+                account:
+                  id: 7f2d0b1e-2a3c-4d5e-8f90-1a2b3c4d5e6f
+                  name: La Frutera - Encargado
+                  email: lafrutera@amifood.com
+                  role: ENCARGADO
+                  storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                store:
+                  id: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                  name: La Frutera
+                  description: Frutas, arepas y comidas rapidas.
+                  location: Bloque 5, al lado del bloque 3
+                  imageUrl: /img/frutera.jpeg
+                  isActive: true
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Correo o contrasena incorrectos (mismo mensaje para no filtrar cuentas)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: AUTH_INVALID_CREDENTIALS
+                  message: Correo o contrasena incorrectos.
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Consultar la cuenta autenticada
+      description: Devuelve la cuenta y el local asociado al token enviado.
+      responses:
+        '200':
+          description: Perfil de la cuenta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthProfile'
+              example:
+                data:
+                  account:
+                    id: 7f2d0b1e-2a3c-4d5e-8f90-1a2b3c4d5e6f
+                    name: La Frutera - Encargado
+                    email: lafrutera@amifood.com
+                    role: ENCARGADO
+                    storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                  store:
+                    id: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                    name: La Frutera
+                    description: Frutas, arepas y comidas rapidas.
+                    location: Bloque 5, al lado del bloque 3
+                    imageUrl: /img/frutera.jpeg
+                    isActive: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /products:
+    get:
+      tags: [Products]
+      summary: Listar productos con filtros combinados
+      description: |
+        Consulta publica. Aplica AND entre filtros (RF04.15), busqueda por
+        palabra clave (RF04.05), ordenamiento (RF04.06) y paginacion (RF04.12).
+        Devuelve productos activos de locales activos, incluidos los agotados
+        para poder mostrar el indicador de disponibilidad (RF04.07).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - $ref: '#/components/parameters/SearchQ'
+        - $ref: '#/components/parameters/Category'
+        - $ref: '#/components/parameters/Available'
+        - $ref: '#/components/parameters/MinPrice'
+        - $ref: '#/components/parameters/MaxPrice'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortOrder'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Pagina de productos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+              example:
+                data:
+                  - id: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+                    storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                    storeName: La Frutera
+                    name: Perro caliente
+                    description: Producto preparado en el local.
+                    category: COMIDAS_RAPIDAS
+                    price: 4000
+                    currency: COP
+                    stock: 18
+                    lowStockThreshold: 5
+                    isLowStock: false
+                    isAvailable: true
+                    imageUrl: /img/product-placeholder.svg
+                    rating: { average: 4.5, count: 2 }
+                    salesCount: 42
+                    createdAt: '2026-10-10T14:00:00.000Z'
+                    updatedAt: '2026-11-12T09:30:00.000Z'
+                meta:
+                  page: 1
+                  pageSize: 10
+                  total: 1
+                  totalPages: 1
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: El local indicado no existe o esta inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: STORE_NOT_FOUND
+                  message: El local indicado no existe o esta inactivo.
+    post:
+      tags: [Products]
+      summary: Crear un producto
+      description: |
+        Requiere JWT. El ENCARGADO crea en su propio local; el ADMIN debe enviar
+        `storeId`. Reglas: nombre unico por local (409), precio > 0, stock >= 0,
+        no se puede crear disponible con stock 0.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+            examples:
+              encargado:
+                summary: Crear en el local del token
+                value:
+                  name: Arepa con queso
+                  description: Arepa de maiz con queso campesino.
+                  category: COMIDAS_RAPIDAS
+                  price: 6500
+                  stock: 12
+                  lowStockThreshold: 3
+              administrador:
+                summary: Crear indicando local (solo ADMIN)
+                value:
+                  storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                  name: Jugo natural
+                  category: BEBIDAS
+                  price: 5000
+                  stock: 8
+      responses:
+        '201':
+          description: Producto creado
+          headers:
+            Location:
+              description: URL del recurso creado
+              schema:
+                type: string
+                example: /api/v1/products/0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+              example:
+                data:
+                  id: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+                  storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                  storeName: null
+                  name: Arepa con queso
+                  description: Arepa de maiz con queso campesino.
+                  category: COMIDAS_RAPIDAS
+                  price: 6500
+                  currency: COP
+                  stock: 12
+                  lowStockThreshold: 3
+                  isLowStock: false
+                  isAvailable: true
+                  imageUrl: /img/product-placeholder.svg
+                  rating: { average: null, count: 0 }
+                  salesCount: 0
+                  createdAt: '2026-11-13T10:00:00.000Z'
+                  updatedAt: '2026-11-13T10:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: El local indicado no existe o esta inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: STORE_NOT_FOUND
+                  message: El local indicado no existe o esta inactivo.
+        '409':
+          description: Ya existe un producto con ese nombre en el local (RN-04)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRODUCT_NAME_DUPLICATED
+                  message: Ya existe un producto llamado "Arepa con queso" en este local.
+
+  /products/mine:
+    get:
+      tags: [Products]
+      summary: Listar los productos del local autenticado
+      description: Incluye productos agotados. Un ADMIN no tiene local y recibe 403.
+      responses:
+        '200':
+          description: Productos del local
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+              example:
+                data:
+                  - id: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+                    storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                    storeName: La Frutera
+                    name: Perro caliente
+                    description: Producto preparado en el local.
+                    category: COMIDAS_RAPIDAS
+                    price: 4000
+                    currency: COP
+                    stock: 18
+                    lowStockThreshold: 5
+                    isLowStock: false
+                    isAvailable: true
+                    imageUrl: /img/product-placeholder.svg
+                    rating: { average: 4.5, count: 2 }
+                    salesCount: 42
+                    createdAt: '2026-10-10T14:00:00.000Z'
+                    updatedAt: '2026-11-12T09:30:00.000Z'
+                meta: { page: 1, pageSize: 500, total: 1, totalPages: 1 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: La cuenta no esta asociada a un local
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: ACCOUNT_WITHOUT_STORE
+                  message: La cuenta no esta asociada a un local.
+
+  /products/events:
+    get:
+      tags: [Events]
+      summary: Suscribirse a cambios de productos (SSE)
+      description: |
+        Stream `text/event-stream`. Eventos: `product.created`,
+        `product.updated`, `product.deleted`. Cada evento incluye id, local,
+        precio, stock, disponibilidad y motivo cuando aplica. No requiere token.
+      security: []
+      responses:
+        '200':
+          description: Stream abierto
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                : conectado a amifood-events
+
+                event: product.updated
+                data: {"type":"product.updated","productId":"0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b","storeId":"0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d","storeName":"La Frutera","name":"Perro caliente","price":4500,"stock":0,"isAvailable":false,"occurredAt":"2026-11-13T10:05:00.000Z","detail":"Venta de mostrador"}
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      summary: Consultar el detalle de un producto
+      description: Incluye local, valoraciones y promedio de calificacion (RF04.02, RF04.10).
+      security: []
+      responses:
+        '200':
+          description: Detalle del producto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+              example:
+                data:
+                  id: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+                  storeId: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                  storeName: La Frutera
+                  name: Perro caliente
+                  description: Producto preparado en el local.
+                  category: COMIDAS_RAPIDAS
+                  price: 4000
+                  currency: COP
+                  stock: 18
+                  lowStockThreshold: 5
+                  isLowStock: false
+                  isAvailable: true
+                  imageUrl: /img/product-placeholder.svg
+                  rating: { average: 4.5, count: 2 }
+                  salesCount: 42
+                  createdAt: '2026-10-10T14:00:00.000Z'
+                  updatedAt: '2026-11-12T09:30:00.000Z'
+                  store:
+                    id: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+                    name: La Frutera
+                    description: Frutas, arepas y comidas rapidas.
+                    location: Bloque 5, al lado del bloque 3
+                    imageUrl: /img/frutera.jpeg
+                    isActive: true
+                  reviews:
+                    - id: 2b3c4d5e-6f70-4a8b-9c0d-1e2f3a4b5c6d
+                      authorName: Ana R.
+                      score: 5
+                      comment: Muy buena porcion y sabor.
+                      createdAt: '2026-11-01T12:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: Producto inexistente o eliminado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRODUCT_NOT_FOUND
+                  message: El producto no existe o fue eliminado.
+    put:
+      tags: [Products]
+      summary: Actualizar un producto
+      description: |
+        Actualiza datos descriptivos y, opcionalmente, el precio. Si el precio
+        varia mas del 20% se exige `reason` (RN-06) y todo cambio queda en el
+        historial. El stock se gestiona con `/stock-adjustments` y la
+        disponibilidad con `/availability`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+            examples:
+              datos:
+                summary: Cambiar nombre y descripcion
+                value:
+                  name: Perro caliente especial
+                  description: Perro caliente con salsa de la casa y queso.
+              precio:
+                summary: Cambiar precio con motivo (variacion > 20%)
+                value:
+                  price: 6000
+                  reason: Ajuste por incremento del proveedor
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '409':
+          description: Nombre duplicado en el local
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRODUCT_NAME_DUPLICATED
+                  message: Ya existe un producto llamado "Perro caliente especial" en este local.
+    delete:
+      tags: [Products]
+      summary: Eliminar (borrado logico) un producto
+      description: |
+        Marca el producto como DELETED y lo desactiva. No se permite si tiene
+        ventas registradas (409): en ese caso debe desactivarse (RN-07).
+      responses:
+        '204':
+          description: Producto eliminado (sin cuerpo)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '409':
+          description: El producto tiene ventas registradas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRODUCT_HAS_SALES
+                  message: El producto tiene ventas registradas; desactívelo en lugar de eliminarlo.
+
+  /products/{id}/availability:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    patch:
+      tags: [Products]
+      summary: Cambiar la disponibilidad
+      description: |
+        RN-03: un producto con stock 0 no puede marcarse como disponible (409).
+        Al llegar a stock 0, la disponibilidad pasa automaticamente a false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityRequest'
+            example:
+              isAvailable: false
+      responses:
+        '200':
+          description: Disponibilidad actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '409':
+          description: Producto agotado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRODUCT_OUT_OF_STOCK
+                  message: No se puede marcar como disponible un producto con stock 0.
+
+  /products/{id}/price:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    patch:
+      tags: [Products]
+      summary: Actualizar el precio vigente
+      description: |
+        Registra el cambio en `price_history`. Si la variacion supera el 20%
+        (aumento o disminucion) el campo `reason` es obligatorio (RN-06).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PriceRequest'
+            examples:
+              normal:
+                summary: Cambio menor al 20%
+                value:
+                  price: 4500
+              conMotivo:
+                summary: Cambio mayor al 20%
+                value:
+                  price: 6000
+                  reason: Incremento del proveedor
+      responses:
+        '200':
+          description: Precio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          description: Precio invalido o falta el motivo obligatorio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: PRICE_CHANGE_REASON_REQUIRED
+                  message: La variacion de precio es de 50.0%. Los cambios superiores al 20% requieren un motivo.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+
+  /products/{id}/stock-adjustments:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    post:
+      tags: [Products]
+      summary: Registrar un movimiento de inventario
+      description: |
+        `delta` positivo repone stock; negativo registra una venta.
+        RN-02: no se puede vender mas de lo disponible (409).
+        RN-03: si el stock llega a 0 el producto queda no disponible.
+        Las ventas incrementan `salesCount` (orden por popularidad).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockAdjustmentRequest'
+            examples:
+              venta:
+                summary: Venta de 2 unidades
+                value:
+                  delta: -2
+                  reason: Venta de mostrador
+              reposicion:
+                summary: Reposicion de 20 unidades
+                value:
+                  delta: 20
+                  reason: Compra a proveedor
+      responses:
+        '200':
+          description: Stock actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '409':
+          description: Stock insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INSUFFICIENT_STOCK
+                  message: 'Stock insuficiente: disponible 2, solicitado 5.'
+
+  /products/{id}/price-history:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      summary: Consultar el historial de precios
+      description: Devuelve los cambios auditados del precio vigente (RF04.08).
+      responses:
+        '200':
+          description: Historial (mas reciente primero)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PriceHistoryEntry'
+              example:
+                data:
+                  - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+                    productId: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+                    oldPrice: 4000
+                    newPrice: 4500
+                    reason: Ajuste por inflacion
+                    changedBy:
+                      accountId: 7f2d0b1e-2a3c-4d5e-8f90-1a2b3c4d5e6f
+                      name: La Frutera - Encargado
+                    changedAt: '2026-11-10T15:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Token obtenido en POST /auth/login. Formato: Authorization: Bearer <token>."
+
+  parameters:
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: UUID del producto
+      schema:
+        type: string
+        format: uuid
+        example: 0c9f1a2b-3d4e-4f50-8a6b-7c8d9e0f1a2b
+    StoreId:
+      name: storeId
+      in: query
+      required: false
+      description: Filtra por local (RF04.01)
+      schema:
+        type: string
+        format: uuid
+        example: 0f3a9c1d-6b2e-4c8a-9d10-2e3f4a5b6c7d
+    SearchQ:
+      name: q
+      in: query
+      required: false
+      description: Palabra clave en nombre o descripcion (RF04.05)
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 100
+        example: arepa
+    Category:
+      name: category
+      in: query
+      required: false
+      description: Filtra por categoria (RF04.04)
+      schema:
+        type: string
+        enum: [COMIDAS_RAPIDAS, BEBIDAS, POSTRES, ALMUERZOS, OTROS]
+        example: COMIDAS_RAPIDAS
+    Available:
+      name: available
+      in: query
+      required: false
+      description: Filtra por disponibilidad (RF04.07)
+      schema:
+        type: boolean
+        example: true
+    MinPrice:
+      name: minPrice
+      in: query
+      required: false
+      description: Precio minimo en COP
+      schema:
+        type: number
+        format: float
+        minimum: 0
+        maximum: 1000000
+        example: 3000
+    MaxPrice:
+      name: maxPrice
+      in: query
+      required: false
+      description: Precio maximo en COP (ej. presupuesto del estudiante)
+      schema:
+        type: number
+        format: float
+        minimum: 0
+        maximum: 1000000
+        example: 15000
+    SortBy:
+      name: sortBy
+      in: query
+      required: false
+      description: Campo de ordenamiento (RF04.06)
+      schema:
+        type: string
+        enum: [name, price, popularity, rating]
+        default: name
+    SortOrder:
+      name: sortOrder
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Tamano de pagina (RF04.12, maximo 50)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 10
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          example: lafrutera@amifood.com
+        password:
+          type: string
+          minLength: 1
+          maxLength: 200
+          format: password
+          example: AmiFood123*
+
+    Account:
+      type: object
+      required: [id, name, email, role, storeId]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: La Frutera - Encargado }
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, ENCARGADO] }
+        storeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: null para el administrador global
+
+    Store:
+      type: object
+      required: [id, name, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: La Frutera }
+        description: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        isActive: { type: boolean }
+
+    AuthProfile:
+      type: object
+      required: [account, store]
+      properties:
+        account:
+          $ref: '#/components/schemas/Account'
+        store:
+          allOf:
+            - $ref: '#/components/schemas/Store'
+          nullable: true
+
+    LoginResponse:
+      type: object
+      required: [token, tokenType, expiresIn, account, store]
+      properties:
+        token: { type: string, example: eyJhbGciOiJIUzI1NiJ9... }
+        tokenType: { type: string, example: Bearer }
+        expiresIn: { type: string, example: 24h }
+        account:
+          $ref: '#/components/schemas/Account'
+        store:
+          allOf:
+            - $ref: '#/components/schemas/Store'
+          nullable: true
+
+    Rating:
+      type: object
+      required: [average, count]
+      properties:
+        average:
+          type: number
+          format: float
+          nullable: true
+          example: 4.5
+        count:
+          type: integer
+          example: 2
+
+    Product:
+      type: object
+      required:
+        - id
+        - storeId
+        - name
+        - category
+        - price
+        - currency
+        - stock
+        - isAvailable
+        - imageUrl
+        - rating
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        storeId: { type: string, format: uuid }
+        storeName:
+          type: string
+          nullable: true
+          example: La Frutera
+        name: { type: string, maxLength: 120, example: Perro caliente }
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        category:
+          type: string
+          enum: [COMIDAS_RAPIDAS, BEBIDAS, POSTRES, ALMUERZOS, OTROS]
+        price:
+          type: number
+          format: float
+          description: Precio en pesos colombianos (2 decimales maximo)
+          example: 4000
+        currency: { type: string, example: COP }
+        stock: { type: integer, minimum: 0, example: 18 }
+        lowStockThreshold: { type: integer, minimum: 0, example: 5 }
+        isLowStock: { type: boolean, example: false }
+        isAvailable:
+          type: boolean
+          description: false cuando el producto esta agotado (stock 0)
+        imageUrl:
+          type: string
+          description: Imagen del producto o placeholder (RF04.03)
+          example: /img/product-placeholder.svg
+        rating:
+          $ref: '#/components/schemas/Rating'
+        salesCount: { type: integer, minimum: 0, example: 42 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Review:
+      type: object
+      required: [id, authorName, score, comment, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        authorName: { type: string, example: Ana R. }
+        score: { type: integer, minimum: 1, maximum: 5, example: 5 }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          required: [store, reviews]
+          properties:
+            store:
+              allOf:
+                - $ref: '#/components/schemas/Store'
+              nullable: true
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/Review'
+
+    ProductResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Product'
+
+    ProductDetailResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/ProductDetail'
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer, example: 1 }
+        pageSize: { type: integer, example: 10 }
+        total: { type: integer, example: 88 }
+        totalPages: { type: integer, example: 9 }
+
+    ProductListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PriceHistoryEntry:
+      type: object
+      required: [id, productId, oldPrice, newPrice, reason, changedBy, changedAt]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        oldPrice: { type: number, example: 4000 }
+        newPrice: { type: number, example: 4500 }
+        reason:
+          type: string
+          nullable: true
+        changedBy:
+          type: object
+          properties:
+            accountId: { type: string, format: uuid }
+            name: { type: string }
+        changedAt: { type: string, format: date-time }
+
+    CreateProductRequest:
+      type: object
+      required: [name, category, price]
+      properties:
+        storeId:
+          type: string
+          format: uuid
+          description: Obligatorio solo para ADMIN
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+          example: Arepa con queso
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        category:
+          type: string
+          enum: [COMIDAS_RAPIDAS, BEBIDAS, POSTRES, ALMUERZOS, OTROS]
+        price:
+          type: number
+          format: float
+          exclusiveMinimum: true
+          minimum: 0
+          maximum: 1000000
+          description: Mayor que 0, maximo 2 decimales
+          example: 6500
+        stock:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+        lowStockThreshold:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+        imageUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+        isAvailable:
+          type: boolean
+          description: Por defecto true si el stock es mayor que 0
+
+    UpdateProductRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+        category:
+          type: string
+          enum: [COMIDAS_RAPIDAS, BEBIDAS, POSTRES, ALMUERZOS, OTROS]
+        price:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1000000
+          description: Si varia mas del 20% requiere reason
+        reason:
+          type: string
+          maxLength: 300
+          nullable: true
+        imageUrl:
+          type: string
+          maxLength: 500
+          nullable: true
+        lowStockThreshold:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    AvailabilityRequest:
+      type: object
+      required: [isAvailable]
+      properties:
+        isAvailable:
+          type: boolean
+          example: false
+
+    PriceRequest:
+      type: object
+      required: [price]
+      properties:
+        price:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1000000
+          example: 4500
+        reason:
+          type: string
+          maxLength: 300
+          nullable: true
+          description: Obligatorio si la variacion supera el 20%
+
+    StockAdjustmentRequest:
+      type: object
+      required: [delta]
+      properties:
+        delta:
+          type: integer
+          description: Positivo repone, negativo registra una venta. No puede ser 0.
+          example: -2
+        reason:
+          type: string
+          maxLength: 300
+          nullable: true
+          example: Venta de mostrador
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: PRODUCT_NOT_FOUND
+            message:
+              type: string
+              example: El producto no existe o fue eliminado.
+            details:
+              description: Detalle adicional (por ejemplo, errores de validacion)
+              oneOf:
+                - type: array
+                  items:
+                    type: object
+                    properties:
+                      field: { type: string, example: price }
+                      message: { type: string, example: El precio debe ser mayor que cero. }
+                - type: object
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+      example:
+        error:
+          code: VALIDATION_ERROR
+          message: Datos de entrada invalidos.
+          details:
+            - field: price
+              message: El precio debe ser mayor que cero.
+            - field: category
+              message: Invalid option
+
+  responses:
+    Unauthorized:
+      description: Token ausente, invalido o expirado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: TOKEN_REQUIRED
+              message: Debe enviar un token Bearer.
+
+    Forbidden:
+      description: El producto pertenece a otro local
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: PRODUCT_FORBIDDEN
+              message: No puede gestionar productos de otro local.
+
+    ProductNotFound:
+      description: Producto inexistente o eliminado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: PRODUCT_NOT_FOUND
+              message: El producto no existe o fue eliminado.
+
+    ValidationError:
+      description: Datos de entrada invalidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Datos de entrada invalidos.
+              details:
+                - field: price
+                  message: El precio debe ser mayor que cero.
